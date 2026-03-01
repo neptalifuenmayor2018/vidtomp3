@@ -1,9 +1,11 @@
 const express = require('express');
-const { exec, execSync } = require('child_process');
-const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const { execSync, exec } = require('child_process');
+const ffmpegPath = require('ffmpeg-static');
+const YTDlpWrap = require('yt-dlp-wrap').default;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,83 +18,67 @@ app.use((req, res, next) => {
   next();
 });
 
-// Instalar yt-dlp y ffmpeg al arrancar si no están disponibles
-function ensureDeps() {
-  // Intentar encontrar yt-dlp
-  try {
-    const ver = execSync('yt-dlp --version', {timeout:5000}).toString().trim();
-    console.log(`[init] yt-dlp OK: ${ver}`);
-  } catch {
-    console.log('[init] yt-dlp no encontrado, instalando...');
-    try {
-      execSync('pip3 install -U yt-dlp', {stdio:'inherit', timeout:60000});
-      console.log('[init] yt-dlp instalado OK');
-    } catch(e) {
-      console.error('[init] Error instalando yt-dlp:', e.message);
-    }
-  }
+// Ruta donde se guarda el binario de yt-dlp
+const YT_DLP_BIN = path.join(__dirname, 'yt-dlp-bin');
 
-  // Verificar ffmpeg
-  try {
-    execSync('ffmpeg -version', {timeout:5000});
-    console.log('[init] ffmpeg OK');
-  } catch {
-    console.log('[init] ffmpeg no encontrado, instalando...');
-    try {
-      execSync('apt-get install -y ffmpeg', {stdio:'inherit', timeout:120000});
-      console.log('[init] ffmpeg instalado OK');
-    } catch(e) {
-      console.error('[init] Error instalando ffmpeg:', e.message);
-    }
+async function ensureYtDlp() {
+  if (fs.existsSync(YT_DLP_BIN)) {
+    console.log('[init] yt-dlp binario ya existe');
+    return;
   }
+  console.log('[init] Descargando yt-dlp...');
+  await YTDlpWrap.downloadFromGithub(YT_DLP_BIN);
+  fs.chmodSync(YT_DLP_BIN, '755');
+  console.log('[init] yt-dlp descargado OK');
 }
 
-ensureDeps();
+console.log('[init] ffmpeg path:', ffmpegPath);
 
-// Buscar ruta de yt-dlp
-function getYtDlpPath() {
-  const paths = [
-    'yt-dlp',
-    '/usr/local/bin/yt-dlp',
-    '/usr/bin/yt-dlp',
-    `${os.homedir()}/.local/bin/yt-dlp`,
-    '/root/.local/bin/yt-dlp'
-  ];
-  for (const p of paths) {
-    try { execSync(`${p} --version`, {timeout:3000}); return p; } catch {}
-  }
-  return 'yt-dlp';
-}
+ensureYtDlp().then(() => {
+  console.log('[init] Todo listo');
+}).catch(e => {
+  console.error('[init] Error descargando yt-dlp:', e.message);
+});
 
 function isValidUrl(url) {
   try { new URL(url); return true; } catch { return false; }
 }
 
-app.post('/convert', (req, res) => {
+app.post('/convert', async (req, res) => {
   const { url, quality = '192' } = req.body;
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'URL inválida' });
 
   const q = ['128','192','320'].includes(quality) ? quality : '192';
   const tmpDir = os.tmpdir();
   const fileId = uuidv4();
-  const outTemplate = path.join(tmpDir, fileId);
-  const ytDlp = getYtDlpPath();
+  const outTemplate = path.join(tmpDir, `${fileId}.%(ext)s`);
+  const outPath = path.join(tmpDir, `${fileId}.mp3`);
+
+  // Asegurarse de que yt-dlp esté listo
+  if (!fs.existsSync(YT_DLP_BIN)) {
+    try {
+      await YTDlpWrap.downloadFromGithub(YT_DLP_BIN);
+      fs.chmodSync(YT_DLP_BIN, '755');
+    } catch(e) {
+      return res.status(500).json({ error: 'yt-dlp no disponible aún, intenta en 30 segundos.' });
+    }
+  }
 
   const cmd = [
-    `"${ytDlp}"`,
+    `"${YT_DLP_BIN}"`,
     '--no-playlist',
     '-x',
     '--audio-format mp3',
     `--audio-quality ${q}k`,
+    `--ffmpeg-location "${ffmpegPath}"`,
     '--no-warnings',
     '--no-progress',
     '--force-overwrites',
-    `-o "${outTemplate}.%(ext)s"`,
+    `-o "${outTemplate}"`,
     `"${url}"`
   ].join(' ');
 
   console.log(`[convert] ${url} @ ${q}kbps`);
-  console.log(`[convert] CMD: ${cmd}`);
 
   exec(cmd, { timeout: 300000 }, (err, stdout, stderr) => {
     console.log('[stdout]', stdout);
@@ -103,20 +89,22 @@ app.post('/convert', (req, res) => {
       return res.status(500).json({ error: 'No se pudo convertir el video. Verifica el enlace.', detail: stderr });
     }
 
-    const files = fs.readdirSync(tmpDir).filter(f => f.startsWith(fileId));
-    const mp3 = files.find(f => f.endsWith('.mp3'));
-    const finalPath = mp3 ? path.join(tmpDir, mp3) : null;
-
-    if (!finalPath || !fs.existsSync(finalPath)) {
-      return res.status(500).json({ error: 'El archivo MP3 no se generó.', detail: `Archivos: ${files.join(', ')||'ninguno'}` });
+    if (!fs.existsSync(outPath)) {
+      // Buscar cualquier archivo generado
+      const files = fs.readdirSync(tmpDir).filter(f => f.startsWith(fileId));
+      console.log('[convert] archivos:', files);
+      const found = files.find(f => f.endsWith('.mp3'));
+      if (!found) {
+        return res.status(500).json({ error: 'Archivo no generado.', detail: files.join(', ') });
+      }
     }
 
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Disposition', `attachment; filename="audio_${fileId}.mp3"`);
-    const stream = fs.createReadStream(finalPath);
+    const stream = fs.createReadStream(outPath);
     stream.pipe(res);
-    stream.on('end', () => fs.unlink(finalPath, ()=>{}));
-    stream.on('error', () => fs.unlink(finalPath, ()=>{}));
+    stream.on('end', () => fs.unlink(outPath, () => {}));
+    stream.on('error', () => fs.unlink(outPath, () => {}));
   });
 });
 
