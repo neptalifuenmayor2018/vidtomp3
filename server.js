@@ -19,7 +19,6 @@ app.use((req, res, next) => {
 const YT_DLP = '/tmp/yt-dlp';
 const COOKIES_FILE = '/tmp/cookies.txt';
 
-// Crear archivo de cookies vacío con formato Netscape válido
 function ensureCookies() {
   if (!fs.existsSync(COOKIES_FILE)) {
     fs.writeFileSync(COOKIES_FILE, '# Netscape HTTP Cookie File\n');
@@ -51,7 +50,6 @@ downloadYtDlp()
   .then(() => { ensureCookies(); console.log('[init] Servidor listo'); })
   .catch(e => console.error('[init] Error:', e.message));
 
-// Endpoint para subir cookies
 app.post('/set-cookies', express.text({ type: '*/*', limit: '1mb' }), (req, res) => {
   if (!req.body) return res.status(400).json({ error: 'No se recibieron cookies' });
   fs.writeFileSync(COOKIES_FILE, req.body);
@@ -76,7 +74,6 @@ app.post('/convert', async (req, res) => {
 
   ensureCookies();
 
-  // Flags profesionales — igual que cobalt.tools y similares
   const flags = [
     '--no-playlist',
     '-x',
@@ -86,7 +83,6 @@ app.post('/convert', async (req, res) => {
     '--no-warnings',
     '--no-progress',
     '--force-overwrites',
-    '--format "bestaudio/best"',
     `--cookies "${COOKIES_FILE}"`,
     '--extractor-args "youtube:player_client=ios,web"',
     '--sleep-requests 1',
@@ -127,10 +123,9 @@ app.post('/convert', async (req, res) => {
   } catch(err) {
     console.error('[error]', err);
 
-    // Mensaje de error amigable
     let msg = 'No se pudo convertir el video.';
     if (String(err).includes('Sign in') || String(err).includes('bot')) {
-      msg = 'YouTube requiere autenticación. Por favor sube tus cookies de YouTube.';
+      msg = 'YouTube requiere autenticación. Sube tus cookies nuevamente.';
     } else if (String(err).includes('DRM')) {
       msg = 'Este video está protegido con DRM y no puede descargarse.';
     } else if (String(err).includes('Private')) {
@@ -161,4 +156,3 @@ app.get('/download/:fileId', (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`VidToMP3 corriendo en puerto ${PORT}`));
- 
