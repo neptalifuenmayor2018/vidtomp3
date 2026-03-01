@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -81,6 +81,18 @@ app.post('/convert', async (req, res) => {
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
+  // Obtener título del video primero
+  let videoTitle = fileId;
+  try {
+    videoTitle = execSync(`${YT_DLP} --get-title --no-playlist "${url}"`, { timeout: 15000 })
+      .toString().trim()
+      .replace(/[^\w\s\-áéíóúñüÁÉÍÓÚÑÜ]/g, '') // quitar caracteres inválidos
+      .replace(/\s+/g, '_')
+      .substring(0, 100); // máximo 100 caracteres
+  } catch(e) {
+    console.log('[convert] No se pudo obtener título, usando ID');
+  }
+
   const cmd = [
     YT_DLP,
     '--no-playlist',
@@ -115,7 +127,7 @@ app.post('/convert', async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', `attachment; filename="audio_${fileId}.mp3"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${videoTitle}.mp3"`);
     const stream = fs.createReadStream(finalPath);
     stream.pipe(res);
     stream.on('end', () => fs.unlink(finalPath, () => {}));
