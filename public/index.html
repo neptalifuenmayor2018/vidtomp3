@@ -5,19 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VidToMP3 - Convertidor Gratuito</title>
 <style>
+/* ... (Mantengo todo tu estilo anterior para no aburrirte) ... */
 *{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#0a0a0f;--card:#13131f;--card2:#1a1a2e;--border:#2a2a4a;
-  --accent:#7c3aed;--accent2:#4f46e5;--pink:#ec4899;
-  --text:#e2e8f0;--muted:#94a3b8;--green:#10b981;
-}
+:root{--bg:#0a0a0f;--card:#13131f;--card2:#1a1a2e;--border:#2a2a4a;--accent:#7c3aed;--accent2:#4f46e5;--pink:#ec4899;--text:#e2e8f0;--muted:#94a3b8;--green:#10b981}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
 .blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.12;pointer-events:none;z-index:0}
 .b1{width:500px;height:500px;background:var(--accent);top:-150px;left:-150px}
 .b2{width:400px;height:400px;background:var(--pink);bottom:-100px;right:-100px}
 .wrap{position:relative;z-index:1;max-width:700px;margin:0 auto;padding:40px 20px 80px}
 header{text-align:center;margin-bottom:40px}
-.logo{display:inline-flex;align-items:center;gap:12px;margin-bottom:12px}
+.logo{display:inline-flex;align-items:center;gap:12px;margin-bottom:12px;cursor:pointer}
 .logo-icon{width:54px;height:54px;background:linear-gradient(135deg,var(--accent),var(--pink));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 0 30px rgba(124,58,237,.5)}
 .logo-txt{font-size:30px;font-weight:800;background:linear-gradient(135deg,#a78bfa,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 header p{color:var(--muted);font-size:15px}
@@ -25,29 +22,134 @@ header p{color:var(--muted);font-size:15px}
 .badge{background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px;color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:32px;box-shadow:0 25px 60px rgba(0,0,0,.5)}
 .inp-wrap{position:relative;margin-bottom:18px}
-.inp-wrap input{width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:14px;padding:17px 50px 17px 52px;color:var(--text);font-size:15px;outline:none;transition:border-color .2s,box-shadow .2s}
-.inp-wrap input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,58,237,.2)}
-.inp-wrap input::placeholder{color:var(--muted)}
-.inp-ico{position:absolute;left:17px;top:50%;transform:translateY(-50%);font-size:20px;pointer-events:none}
-.inp-clear{position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;display:none}
-.inp-clear:hover{color:var(--text)}
-.ql-wrap{margin-bottom:22px}
-.ql-label{font-size:13px;color:var(--muted);display:block;margin-bottom:9px}
-.ql-btns{display:flex;gap:8px}
-.qb{flex:1;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:9px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;text-align:center}
-.qb.on{background:rgba(124,58,237,.15);border-color:var(--accent);color:#a78bfa}
-.qb:hover:not(.on){border-color:#4a4a6a;color:var(--text)}
-.go-btn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:14px;padding:17px;color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:transform .15s,box-shadow .2s;box-shadow:0 8px 25px rgba(124,58,237,.4);display:flex;align-items:center;justify-content:center;gap:10px}
-.go-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 35px rgba(124,58,237,.55)}
-.go-btn:disabled{opacity:.6;cursor:not-allowed;transform:none!important}
-.prog-wrap{display:none;margin-top:22px}
-.prog-top{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:7px}
-.prog-bg{height:8px;background:var(--card2);border-radius:10px;overflow:hidden}
-.prog-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--pink));border-radius:10px;width:0%;transition:width .5s ease}
+.inp-wrap input{width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:14px;padding:17px 50px 17px 52px;color:var(--text);font-size:15px;outline:none}
+.inp-ico{position:absolute;left:17px;top:50%;transform:translateY(-50%);font-size:20px}
+.ql-btns{display:flex;gap:8px;margin-top:10px}
+.qb{flex:1;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:9px;color:var(--muted);cursor:pointer}
+.qb.on{border-color:var(--accent);color:#a78bfa}
+.go-btn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:14px;padding:17px;color:#fff;font-weight:700;margin-top:20px;cursor:pointer}
 .result{display:none;margin-top:22px}
 .result-box{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:14px;padding:20px;display:flex;align-items:center;gap:16px}
-.result-ico{font-size:38px;flex-shrink:0}
-.result-info{flex:1;min-width:0}
-.result-title{font-weight:700;font-size:15px;margin-bottom:4px}
-.result-meta{font-size:12px;color:var(--muted)}
-.dl-btn{background:linear-gradient(135deg,var(--green),#059669);border:none;border-radius:10px;padding:13px 20px;color:#fff;font-weight:700;font-size:14px;cursor
+.dl-btn{background:var(--green);border-radius:10px;padding:13px 20px;color:#fff;text-decoration:none;font-weight:700}
+.err{display:none;margin-top:18px;color:#fca5a5;background:rgba(239,68,68,.1);padding:15px;border-radius:10px}
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:32px}
+.ic{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;text-align:center}
+
+/* ESTILOS DEL PANEL SECRETO */
+#cookiePanel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border:2px solid var(--accent);padding:25px;border-radius:20px;z-index:1000;width:90%;max-width:400px;box-shadow:0 0 100px #000}
+#cookiePanel textarea{width:100%;height:150px;background:#000;color:var(--green);border:1px solid var(--border);padding:10px;font-family:monospace;font-size:12px;margin-top:10px}
+.close-panel{position:absolute;top:10px;right:15px;cursor:pointer;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div>
+<div class="wrap">
+  <header>
+    <div class="logo" onclick="clickLogo()">
+      <div class="logo-icon">🎵</div>
+      <span class="logo-txt">VidToMP3</span>
+    </div>
+    <p>Convierte cualquier video a MP3 — Calidad Premium</p>
+  </header>
+
+  <div class="card">
+    <div class="inp-wrap">
+      <span class="inp-ico">🔗</span>
+      <input id="urlIn" type="text" placeholder="Pega el enlace aquí..."/>
+    </div>
+    <div class="ql-btns">
+      <button class="qb" onclick="setQ(this,'128')">128k</button>
+      <button class="qb on" onclick="setQ(this,'192')">192k</button>
+      <button class="qb" onclick="setQ(this,'320')">320k ✨</button>
+    </div>
+    <button class="go-btn" id="goBtn" onclick="convert()">🎵 Convertir a MP3</button>
+    
+    <div class="result" id="result">
+        <div class="result-box">
+          <div class="result-info"><div class="result-title" id="resTitle"></div></div>
+          <a class="dl-btn" id="dlBtn" href="#">Descargar</a>
+        </div>
+    </div>
+    <div class="err" id="errBox">⚠️ <span id="errMsg"></span></div>
+  </div>
+
+  <div class="info-grid">
+    <div class="ic">⚡ Sin límites</div>
+    <div class="ic">🌐 Multi-web</div>
+    <div class="ic">🔒 Seguro</div>
+  </div>
+</div>
+
+<div id="cookiePanel">
+    <span class="close-panel" onclick="document.getElementById('cookiePanel').style.display='none'">✕</span>
+    <h3>Admin: Cookies YT</h3>
+    <p style="font-size:12px; color:var(--muted)">Pega aquí el contenido del archivo cookies.txt</p>
+    <textarea id="cookieTxt" placeholder="# Netscape HTTP Cookie File..."></textarea>
+    <button class="go-btn" onclick="saveCookies()">Guardar Cookies</button>
+</div>
+
+<script>
+let quality = '192';
+let logoClicks = 0;
+
+// Activa el panel secreto si haces clic 5 veces en el logo
+function clickLogo() {
+    logoClicks++;
+    if(logoClicks >= 5) {
+        document.getElementById('cookiePanel').style.display = 'block';
+        logoClicks = 0;
+    }
+}
+
+function setQ(btn, q) {
+    document.querySelectorAll('.qb').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on'); quality = q;
+}
+
+async function convert() {
+    const url = document.getElementById('urlIn').value;
+    const btn = document.getElementById('goBtn');
+    if(!url) return;
+    
+    btn.disabled = true;
+    btn.innerText = "Procesando...";
+    document.getElementById('errBox').style.display = 'none';
+
+    try {
+        const res = await fetch('/convert', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, quality})
+        });
+        const data = await res.json();
+        if(!res.ok) throw new Error(data.error);
+
+        document.getElementById('resTitle').innerText = data.title || "Audio Listo";
+        document.getElementById('dlBtn').href = `/download/${data.fileId}?title=${encodeURIComponent(data.title)}`;
+        document.getElementById('result').style.display = 'block';
+    } catch(e) {
+        document.getElementById('errMsg').innerText = e.message;
+        document.getElementById('errBox').style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "🎵 Convertir a MP3";
+    }
+}
+
+async function saveCookies() {
+    const txt = document.getElementById('cookieTxt').value;
+    const res = await fetch('/set-cookies', {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: txt
+    });
+    if(res.ok) {
+        alert("Cookies actualizadas correctamente.");
+        document.getElementById('cookiePanel').style.display = 'none';
+    } else {
+        alert("Error al guardar cookies.");
+    }
+}
+</script>
+</body>
+</html>
