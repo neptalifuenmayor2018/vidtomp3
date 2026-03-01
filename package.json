@@ -4,12 +4,13 @@
   "description": "Convertidor universal de video a MP3",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "install-yt-dlp": "pip3 install yt-dlp"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "ffmpeg-static": "^5.2.0",
+    "yt-dlp-wrap": "^2.3.12"
   },
   "engines": {
     "node": ">=18.0.0"
