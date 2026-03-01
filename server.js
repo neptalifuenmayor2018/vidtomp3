@@ -1,4 +1,3 @@
-
 const express = require('express');
 const { exec, execSync } = require('child_process');
 const fs = require('fs');
@@ -44,24 +43,22 @@ function downloadFile(url, dest) {
 }
 
 async function ensureDeps() {
-  // Descargar yt-dlp
   if (!fs.existsSync(YT_DLP)) {
     console.log('[init] Descargando yt-dlp...');
     await downloadFile('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux', YT_DLP);
     console.log('[init] yt-dlp OK');
   }
 
-  // Descargar deno (JS runtime requerido por yt-dlp para YouTube)
   if (!fs.existsSync(DENO_BIN)) {
     console.log('[init] Descargando deno...');
     try {
-      // Descargar deno zip
-      const denoZip = '/tmp/deno.zip';
-      await downloadFile('https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip', denoZip);
-      execSync(`unzip -o ${denoZip} -d /tmp && chmod +x ${DENO_BIN}`);
+      await downloadFile('https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip', '/tmp/deno.zip');
+      // Extraer con python3 (disponible via mise)
+      execSync(`python3 -c "import zipfile; zipfile.ZipFile('/tmp/deno.zip').extract('deno', '/tmp')"`, { timeout: 30000 });
+      fs.chmodSync(DENO_BIN, 0o755);
       console.log('[init] deno OK');
     } catch(e) {
-      console.error('[init] deno falló, continuando sin él:', e.message);
+      console.error('[init] deno falló:', e.message);
     }
   }
 }
@@ -118,9 +115,8 @@ app.post('/convert', async (req, res) => {
     '--force-overwrites',
     '--no-check-certificates',
     `--cookies "${COOKIES_FILE}"`,
+    '-f "140/251/250/249/139/bestaudio/best"',
     denoFlag,
-    // Usar formato de audio específico que SÍ existe
-    '-f "140/251/250/249/139/bestaudio"',
   ].join(' ');
 
   const titleCmd = `${YT_DLP} --no-playlist --no-warnings --no-check-certificates --cookies "${COOKIES_FILE}" ${denoFlag} --skip-download --print "%(title)s" "${url}"`;
