@@ -1,7 +1,6 @@
 const express = require('express');
 const { exec } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 const https = require('https');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
@@ -21,10 +20,7 @@ const YT_DLP = '/tmp/yt-dlp';
 
 function downloadYtDlp() {
   return new Promise((resolve, reject) => {
-    if (fs.existsSync(YT_DLP)) {
-      console.log('[init] yt-dlp ya existe');
-      return resolve();
-    }
+    if (fs.existsSync(YT_DLP)) return resolve();
     console.log('[init] Descargando yt-dlp...');
     const file = fs.createWriteStream(YT_DLP);
     function get(url, depth = 0) {
@@ -57,23 +53,20 @@ app.post('/convert', async (req, res) => {
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'URL inválida' });
 
   const q = ['128','192','320'].includes(quality) ? quality : '192';
-
-  // Usamos un prefijo único para identificar los archivos de esta conversión
-  const prefix = `ytdl_${uuidv4().replace(/-/g,'')}`;
-
-  // Dejamos que yt-dlp nombre el archivo con el título del video
-  // %(title)s genera el nombre real, prefix ayuda a encontrarlo después
-  const outTemplate = `/tmp/${prefix}_%(title)s.%(ext)s`;
+  const fileId = uuidv4();
+  // Siempre guardamos con ID fijo, luego renombramos
+  const outPath = `/tmp/${fileId}.mp3`;
 
   if (!fs.existsSync(YT_DLP)) {
     try { await downloadYtDlp(); }
-    catch(e) { return res.status(500).json({ error: 'yt-dlp no disponible, intenta en 30 segundos.' }); }
+    catch(e) { return res.status(500).json({ error: 'yt-dlp no disponible.' }); }
   }
 
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
-  const cmd = [
+  // Paso 1: convertir con nombre fijo (esto SIEMPRE funciona)
+  const convertCmd = [
     YT_DLP,
     '--no-playlist',
     '-x',
@@ -83,46 +76,72 @@ app.post('/convert', async (req, res) => {
     '--no-warnings',
     '--no-progress',
     '--force-overwrites',
-    `-o "${outTemplate}"`,
+    `-o "/tmp/${fileId}.%(ext)s"`,
     `"${url}"`
   ].join(' ');
 
-  console.log(`[convert] ${url} @ ${q}kbps`);
+  // Paso 2: obtener título por separado con --no-simulate --skip-download
+  const titleCmd = [
+    YT_DLP,
+    '--no-playlist',
+    '--skip-download',
+    '--print "%(title)s"',
+    `"${url}"`
+  ].join(' ');
 
-  exec(cmd, { timeout: 300000 }, (err, stdout, stderr) => {
-    console.log('[stdout]', stdout);
-    console.log('[stderr]', stderr);
+  console.log(`[convert] Iniciando: ${url} @ ${q}kbps`);
 
-    if (err) {
-      console.error('[error]', err.message);
-      return res.status(500).json({ error: 'No se pudo convertir el video.', detail: stderr });
+  // Ejecutar conversión y obtención de título en paralelo
+  const convertPromise = new Promise((resolve, reject) => {
+    exec(convertCmd, { timeout: 300000 }, (err, stdout, stderr) => {
+      if (err) reject({ err, stderr });
+      else resolve({ stdout, stderr });
+    });
+  });
+
+  const titlePromise = new Promise((resolve) => {
+    exec(titleCmd, { timeout: 20000 }, (err, stdout) => {
+      if (err || !stdout.trim()) {
+        resolve(null);
+      } else {
+        // Limpiar título para nombre de archivo
+        const title = stdout.trim()
+          .replace(/[\/\\:*?"<>|]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .substring(0, 120);
+        resolve(title || null);
+      }
+    });
+  });
+
+  try {
+    // Esperar ambos en paralelo
+    const [, title] = await Promise.all([convertPromise, titlePromise]);
+
+    // Verificar que el archivo existe
+    if (!fs.existsSync(outPath)) {
+      const files = fs.readdirSync('/tmp').filter(f => f.startsWith(fileId));
+      console.log('[convert] archivos en /tmp:', files);
+      if (!files.length) return res.status(500).json({ error: 'Archivo no generado.' });
     }
 
-    // Buscar el archivo MP3 generado con nuestro prefijo
-    const files = fs.readdirSync('/tmp').filter(f => f.startsWith(prefix) && f.endsWith('.mp3'));
-    console.log('[convert] archivos encontrados:', files);
-
-    if (!files.length) {
-      return res.status(500).json({ error: 'Archivo no generado.', detail: stderr });
-    }
-
-    const finalPath = `/tmp/${files[0]}`;
-
-    // El nombre limpio para el usuario: quitamos el prefijo
-    const cleanName = files[0]
-      .replace(`${prefix}_`, '')  // quitar prefijo
-      .replace(/\.mp3$/, '');     // quitar extensión (la ponemos después)
-
-    console.log(`[convert] Enviando: ${cleanName}.mp3`);
+    const downloadName = title ? `${title}.mp3` : `audio_${fileId}.mp3`;
+    console.log(`[convert] Enviando como: ${downloadName}`);
 
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(cleanName)}.mp3"`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`);
 
-    const stream = fs.createReadStream(finalPath);
+    const stream = fs.createReadStream(outPath);
     stream.pipe(res);
-    stream.on('end', () => fs.unlink(finalPath, () => {}));
-    stream.on('error', () => fs.unlink(finalPath, () => {}));
-  });
+    stream.on('end', () => fs.unlink(outPath, () => {}));
+    stream.on('error', () => fs.unlink(outPath, () => {}));
+
+  } catch({ err, stderr }) {
+    console.error('[error]', err.message);
+    console.error('[stderr]', stderr);
+    res.status(500).json({ error: 'No se pudo convertir el video.', detail: stderr });
+  }
 });
 
 app.listen(PORT, () => console.log(`VidToMP3 corriendo en puerto ${PORT}`));
