@@ -59,8 +59,15 @@ app.post('/convert', async (req, res) => {
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
   // Obtener título y convertir en paralelo
-  const titleCmd = `${YT_DLP} --no-playlist --skip-download --print "%(title)s" "${url}"`;
-  const convertCmd = `${YT_DLP} --no-playlist -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" --no-warnings --no-progress --force-overwrites -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  // Flags para evitar detección de bot en YouTube
+  const antiBot = [
+    '--extractor-args "youtube:player_client=web,mweb,ios"',
+    '--user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"',
+    '--add-header "Accept-Language:en-US,en;q=0.9"',
+  ].join(' ');
+
+  const titleCmd = `${YT_DLP} --no-playlist --skip-download --print "%(title)s" ${antiBot} "${url}"`;
+  const convertCmd = `${YT_DLP} --no-playlist -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" --no-warnings --no-progress --force-overwrites ${antiBot} -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
