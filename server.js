@@ -67,7 +67,7 @@ app.post('/convert', async (req, res) => {
   ].join(' ');
 
   const titleCmd = `${YT_DLP} --no-playlist --skip-download --print "%(title)s" ${antiBot} "${url}"`;
-  const convertCmd = `${YT_DLP} --no-playlist -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" --no-warnings --no-progress --force-overwrites ${antiBot} -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const convertCmd = `${YT_DLP} --no-playlist -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" --no-warnings --no-progress --force-overwrites --format "bestaudio/best" ${antiBot} -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
@@ -88,6 +88,40 @@ app.post('/convert', async (req, res) => {
     });
   });
 
+  try {
+    await Promise.all([titlePromise, convertPromise]);
+    const outPath = `/tmp/${fileId}.mp3`;
+    if (!fs.existsSync(outPath)) return res.status(500).json({ error: 'Archivo no generado.' });
+    // Devolver fileId y título — el frontend descarga con /download/:fileId
+    res.json({ fileId, title: title || null });
+  } catch(err) {
+    console.error('[error]', err);
+    res.status(500).json({ error: 'No se pudo convertir el video.', detail: err });
+  }
+});
+
+// PASO 2: Descargar el archivo por fileId
+app.get('/download/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  // Validar que el fileId sea un UUID válido para seguridad
+  if (!/^[0-9a-f-]{36}$/.test(fileId)) return res.status(400).send('ID inválido');
+
+  const filePath = `/tmp/${fileId}.mp3`;
+  if (!fs.existsSync(filePath)) return res.status(404).send('Archivo no encontrado o expirado');
+
+  const title = req.query.title ? decodeURIComponent(req.query.title) : 'audio';
+  const safeName = title.replace(/[\/\\:*?"<>|]/g,'').trim() || 'audio';
+
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}.mp3"`);
+
+  const stream = fs.createReadStream(filePath);
+  stream.pipe(res);
+  stream.on('end', () => fs.unlink(filePath, () => {}));
+  stream.on('error', () => fs.unlink(filePath, () => {}));
+});
+
+app.listen(PORT, () => console.log(`VidToMP3 corriendo en puerto ${PORT}`));
   try {
     await Promise.all([titlePromise, convertPromise]);
     const outPath = `/tmp/${fileId}.mp3`;
