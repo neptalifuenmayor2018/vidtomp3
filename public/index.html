@@ -223,20 +223,22 @@ async function convert(){
       throw new Error(d.error || 'Error del servidor');
     }
 
+    const { fileId, title } = await res.json();
+    const fileName = title || `audio_${Date.now()}`;
+
     setProgress(100,'¡Listo!');
     document.getElementById('progLbl').classList.remove('puls');
-
-    // Blob download
-    const blob = await res.blob();
-    const dlUrl = URL.createObjectURL(blob);
 
     await new Promise(r=>setTimeout(r,400));
     document.getElementById('progWrap').style.display='none';
 
-    document.getElementById('resTitle').textContent=`${plat.icon} ${plat.name} — Audio MP3`;
+    // Construir URL de descarga con el título
+    const dlUrl = `/download/${fileId}?title=${encodeURIComponent(fileName)}`;
+
+    document.getElementById('resTitle').textContent=`${plat.icon} ${plat.name} — ${fileName}`;
     document.getElementById('resMeta').textContent=`Calidad: ${quality} kbps · Listo para descargar`;
     document.getElementById('dlBtn').href=dlUrl;
-    document.getElementById('dlBtn').setAttribute('download',`audio_${Date.now()}.mp3`);
+    document.getElementById('dlBtn').setAttribute('download', `${fileName}.mp3`);
     document.getElementById('result').style.display='block';
 
     addHist(url,plat);
