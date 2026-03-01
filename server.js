@@ -43,7 +43,6 @@ downloadYtDlp()
   .then(() => console.log('[init] Servidor listo'))
   .catch(e => console.error('[init] Error:', e.message));
 
-// PASO 1: Convertir — devuelve un fileId
 app.post('/convert', async (req, res) => {
   const { url, quality = '192' } = req.body;
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'URL inválida' });
@@ -55,11 +54,10 @@ app.post('/convert', async (req, res) => {
     try { await downloadYtDlp(); }
     catch(e) { return res.status(500).json({ error: 'yt-dlp no disponible.' }); }
   }
+
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
-  // Obtener título y convertir en paralelo
-  // Flags para evitar detección de bot en YouTube
   const antiBot = [
     '--extractor-args "youtube:player_client=web,mweb,ios"',
     '--user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"',
@@ -90,9 +88,13 @@ app.post('/convert', async (req, res) => {
 
   try {
     await Promise.all([titlePromise, convertPromise]);
+
     const outPath = `/tmp/${fileId}.mp3`;
-    if (!fs.existsSync(outPath)) return res.status(500).json({ error: 'Archivo no generado.' });
-    // Devolver fileId y título — el frontend descarga con /download/:fileId
+    if (!fs.existsSync(outPath)) {
+      const files = fs.readdirSync('/tmp').filter(f => f.startsWith(fileId));
+      if (!files.length) return res.status(500).json({ error: 'Archivo no generado.' });
+    }
+
     res.json({ fileId, title: title || null });
   } catch(err) {
     console.error('[error]', err);
@@ -100,44 +102,8 @@ app.post('/convert', async (req, res) => {
   }
 });
 
-// PASO 2: Descargar el archivo por fileId
 app.get('/download/:fileId', (req, res) => {
   const { fileId } = req.params;
-  // Validar que el fileId sea un UUID válido para seguridad
-  if (!/^[0-9a-f-]{36}$/.test(fileId)) return res.status(400).send('ID inválido');
-
-  const filePath = `/tmp/${fileId}.mp3`;
-  if (!fs.existsSync(filePath)) return res.status(404).send('Archivo no encontrado o expirado');
-
-  const title = req.query.title ? decodeURIComponent(req.query.title) : 'audio';
-  const safeName = title.replace(/[\/\\:*?"<>|]/g,'').trim() || 'audio';
-
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeName}.mp3"`);
-
-  const stream = fs.createReadStream(filePath);
-  stream.pipe(res);
-  stream.on('end', () => fs.unlink(filePath, () => {}));
-  stream.on('error', () => fs.unlink(filePath, () => {}));
-});
-
-app.listen(PORT, () => console.log(`VidToMP3 corriendo en puerto ${PORT}`));
-  try {
-    await Promise.all([titlePromise, convertPromise]);
-    const outPath = `/tmp/${fileId}.mp3`;
-    if (!fs.existsSync(outPath)) return res.status(500).json({ error: 'Archivo no generado.' });
-    // Devolver fileId y título — el frontend descarga con /download/:fileId
-    res.json({ fileId, title: title || null });
-  } catch(err) {
-    console.error('[error]', err);
-    res.status(500).json({ error: 'No se pudo convertir el video.', detail: err });
-  }
-});
-
-// PASO 2: Descargar el archivo por fileId
-app.get('/download/:fileId', (req, res) => {
-  const { fileId } = req.params;
-  // Validar que el fileId sea un UUID válido para seguridad
   if (!/^[0-9a-f-]{36}$/.test(fileId)) return res.status(400).send('ID inválido');
 
   const filePath = `/tmp/${fileId}.mp3`;
