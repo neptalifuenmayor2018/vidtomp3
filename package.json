@@ -1,0 +1,17 @@
+{
+  "name": "vidtomp3",
+  "version": "1.0.0",
+  "description": "Convertidor universal de video a MP3",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "install-yt-dlp": "pip3 install yt-dlp"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
