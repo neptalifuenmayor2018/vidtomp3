@@ -74,23 +74,20 @@ app.post('/convert', async (req, res) => {
 
   ensureCookies();
 
-  const flags = [
+  // Flags limpios y probados — sin player_client que causa conflictos de formato
+  const baseFlags = [
     '--no-playlist',
-    '-x',
-    '--audio-format mp3',
-    `--audio-quality ${q}k`,
-    `--ffmpeg-location "${ffmpegPath}"`,
     '--no-warnings',
     '--no-progress',
     '--force-overwrites',
-    `--cookies "${COOKIES_FILE}"`,
-    '--extractor-args "youtube:player_client=ios,web"',
-    '--sleep-requests 1',
     '--no-check-certificates',
+    `--cookies "${COOKIES_FILE}"`,
   ].join(' ');
 
-  const titleCmd = `${YT_DLP} ${flags} --skip-download --print "%(title)s" "${url}"`;
-  const convertCmd = `${YT_DLP} ${flags} -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const titleCmd = `${YT_DLP} ${baseFlags} --skip-download --print "%(title)s" "${url}"`;
+
+  // Convertir: descargar mejor audio disponible y convertir a mp3 con ffmpeg
+  const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
@@ -99,6 +96,7 @@ app.post('/convert', async (req, res) => {
     exec(titleCmd, { timeout: 20000 }, (err, stdout) => {
       if (!err && stdout.trim()) {
         title = stdout.trim().replace(/[\/\\:*?"<>|]/g, '').trim().substring(0, 120);
+        console.log('[title]', title);
       }
       resolve();
     });
