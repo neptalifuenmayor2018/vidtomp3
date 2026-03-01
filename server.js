@@ -1,9 +1,11 @@
+
 const express = require('express');
 const { exec, execSync } = require('child_process');
 const fs = require('fs');
 const https = require('https');
 const { v4: uuidv4 } = require('uuid');
-const ffmpegPath = require('ffmpeg-static');
+const AdmZip = require('adm-zip');
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -53,8 +55,9 @@ async function ensureDeps() {
     console.log('[init] Descargando deno...');
     try {
       await downloadFile('https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip', '/tmp/deno.zip');
-      // Extraer con python3 (disponible via mise)
-      execSync(`python3 -c "import zipfile; zipfile.ZipFile('/tmp/deno.zip').extract('deno', '/tmp')"`, { timeout: 30000 });
+      // Extraer con adm-zip (Node.js puro, sin dependencias del sistema)
+      const zip = new AdmZip('/tmp/deno.zip');
+      zip.extractEntryTo('deno', '/tmp', false, true);
       fs.chmodSync(DENO_BIN, 0o755);
       console.log('[init] deno OK');
     } catch(e) {
