@@ -68,13 +68,11 @@ app.post('/convert', async (req, res) => {
     try { await downloadYtDlp(); }
     catch(e) { return res.status(500).json({ error: 'yt-dlp no disponible.' }); }
   }
-
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
   ensureCookies();
 
-  // Flags limpios y probados — sin player_client que causa conflictos de formato
   const baseFlags = [
     '--no-playlist',
     '--no-warnings',
@@ -84,10 +82,12 @@ app.post('/convert', async (req, res) => {
     `--cookies "${COOKIES_FILE}"`,
   ].join(' ');
 
+  // Paso 1: obtener título
   const titleCmd = `${YT_DLP} ${baseFlags} --skip-download --print "%(title)s" "${url}"`;
 
-  // Convertir: descargar mejor audio disponible y convertir a mp3 con ffmpeg
-  const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  // Paso 2: descargar el mejor audio disponible SIN especificar formato
+  // yt-dlp elige lo mejor disponible, ffmpeg convierte a mp3
+  const convertCmd = `${YT_DLP} ${baseFlags} -f "bestaudio" --ffmpeg-location "${ffmpegPath}" --postprocessor-args "ffmpeg:-vn -ar 44100 -ac 2 -b:a ${q}k" -x --audio-format mp3 -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
@@ -113,23 +113,15 @@ app.post('/convert', async (req, res) => {
 
   try {
     await Promise.all([titlePromise, convertPromise]);
-
     const files = fs.readdirSync('/tmp').filter(f => f.startsWith(fileId) && f.endsWith('.mp3'));
     if (!files.length) return res.status(500).json({ error: 'Archivo no generado.' });
-
     res.json({ fileId, title: title || null });
   } catch(err) {
     console.error('[error]', err);
-
     let msg = 'No se pudo convertir el video.';
-    if (String(err).includes('Sign in') || String(err).includes('bot')) {
-      msg = 'YouTube requiere autenticación. Sube tus cookies nuevamente.';
-    } else if (String(err).includes('DRM')) {
-      msg = 'Este video está protegido con DRM y no puede descargarse.';
-    } else if (String(err).includes('Private')) {
-      msg = 'Este video es privado.';
-    }
-
+    if (String(err).includes('Sign in') || String(err).includes('bot')) msg = 'Sube tus cookies de YouTube nuevamente.';
+    else if (String(err).includes('DRM')) msg = 'Este video está protegido con DRM.';
+    else if (String(err).includes('Private')) msg = 'Este video es privado.';
     res.status(500).json({ error: msg, detail: String(err).substring(0, 300) });
   }
 });
@@ -137,16 +129,12 @@ app.post('/convert', async (req, res) => {
 app.get('/download/:fileId', (req, res) => {
   const { fileId } = req.params;
   if (!/^[0-9a-f-]{36}$/.test(fileId)) return res.status(400).send('ID inválido');
-
   const filePath = `/tmp/${fileId}.mp3`;
   if (!fs.existsSync(filePath)) return res.status(404).send('Archivo no encontrado o expirado');
-
   const title = req.query.title ? decodeURIComponent(req.query.title) : 'audio';
   const safeName = title.replace(/[\/\\:*?"<>|]/g, '').trim() || 'audio';
-
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${safeName}.mp3"`);
-
   const stream = fs.createReadStream(filePath);
   stream.pipe(res);
   stream.on('end', () => fs.unlink(filePath, () => {}));
