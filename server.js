@@ -57,6 +57,17 @@ app.post('/set-cookies', express.text({ type: '*/*', limit: '1mb' }), (req, res)
   res.json({ ok: true });
 });
 
+app.get('/formats', (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('Falta ?url=...');
+  ensureCookies();
+  const cmd = `${YT_DLP} --list-formats --no-check-certificates --cookies "${COOKIES_FILE}" "${url}"`;
+  exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(stdout + '\n' + stderr);
+  });
+});
+
 app.post('/convert', async (req, res) => {
   const { url, quality = '192' } = req.body;
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'URL inválida' });
