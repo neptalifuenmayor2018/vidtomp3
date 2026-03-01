@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const fs = require('fs');
 const https = require('https');
 const { v4: uuidv4 } = require('uuid');
@@ -18,6 +18,7 @@ app.use((req, res, next) => {
 
 const YT_DLP = '/tmp/yt-dlp';
 const COOKIES_FILE = '/tmp/cookies.txt';
+const DENO_BIN = '/tmp/deno';
 
 function ensureCookies() {
   if (!fs.existsSync(COOKIES_FILE)) {
@@ -25,28 +26,50 @@ function ensureCookies() {
   }
 }
 
-function downloadYtDlp() {
+function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
-    if (fs.existsSync(YT_DLP)) return resolve();
-    console.log('[init] Descargando yt-dlp...');
-    const file = fs.createWriteStream(YT_DLP);
-    function get(url, depth = 0) {
-      if (depth > 5) return reject(new Error('Demasiados redirects'));
-      https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
+    if (fs.existsSync(dest)) return resolve();
+    const file = fs.createWriteStream(dest);
+    function get(u, depth = 0) {
+      if (depth > 10) return reject(new Error('Demasiados redirects'));
+      https.get(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
         if ([301,302,307,308].includes(res.statusCode)) return get(res.headers.location, depth + 1);
         res.pipe(file);
-        file.on('finish', () => { file.close(); fs.chmodSync(YT_DLP, 0o755); resolve(); });
-      }).on('error', e => { fs.unlink(YT_DLP, ()=>{}); reject(e); });
+        file.on('finish', () => { file.close(); fs.chmodSync(dest, 0o755); resolve(); });
+      }).on('error', e => { try { fs.unlinkSync(dest); } catch {} reject(e); });
     }
-    get('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux');
+    get(url);
   });
+}
+
+async function ensureDeps() {
+  // Descargar yt-dlp
+  if (!fs.existsSync(YT_DLP)) {
+    console.log('[init] Descargando yt-dlp...');
+    await downloadFile('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux', YT_DLP);
+    console.log('[init] yt-dlp OK');
+  }
+
+  // Descargar deno (JS runtime requerido por yt-dlp para YouTube)
+  if (!fs.existsSync(DENO_BIN)) {
+    console.log('[init] Descargando deno...');
+    try {
+      // Descargar deno zip
+      const denoZip = '/tmp/deno.zip';
+      await downloadFile('https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip', denoZip);
+      execSync(`unzip -o ${denoZip} -d /tmp && chmod +x ${DENO_BIN}`);
+      console.log('[init] deno OK');
+    } catch(e) {
+      console.error('[init] deno falló, continuando sin él:', e.message);
+    }
+  }
 }
 
 function isValidUrl(url) {
   try { new URL(url); return true; } catch { return false; }
 }
 
-downloadYtDlp()
+ensureDeps()
   .then(() => { ensureCookies(); console.log('[init] Servidor listo'); })
   .catch(e => console.error('[init] Error:', e.message));
 
@@ -61,7 +84,8 @@ app.get('/formats', (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).send('Falta ?url=...');
   ensureCookies();
-  const cmd = `${YT_DLP} --list-formats --no-check-certificates --cookies "${COOKIES_FILE}" "${url}"`;
+  const denoFlag = fs.existsSync(DENO_BIN) ? `--js-runtimes deno:${DENO_BIN}` : '';
+  const cmd = `${YT_DLP} --list-formats --no-check-certificates --cookies "${COOKIES_FILE}" ${denoFlag} "${url}"`;
   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
     res.setHeader('Content-Type', 'text/plain');
     res.send(stdout + '\n' + stderr);
@@ -76,13 +100,15 @@ app.post('/convert', async (req, res) => {
   const fileId = uuidv4();
 
   if (!fs.existsSync(YT_DLP)) {
-    try { await downloadYtDlp(); }
+    try { await ensureDeps(); }
     catch(e) { return res.status(500).json({ error: 'yt-dlp no disponible.' }); }
   }
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
   ensureCookies();
+
+  const denoFlag = fs.existsSync(DENO_BIN) ? `--js-runtimes deno:${DENO_BIN}` : '';
 
   const baseFlags = [
     '--no-playlist',
@@ -91,11 +117,13 @@ app.post('/convert', async (req, res) => {
     '--force-overwrites',
     '--no-check-certificates',
     `--cookies "${COOKIES_FILE}"`,
-    '--extractor-args "youtube:player_client=web"',
+    denoFlag,
+    // Usar formato de audio específico que SÍ existe
+    '-f "140/251/250/249/139/bestaudio"',
   ].join(' ');
 
-  const titleCmd = `${YT_DLP} ${baseFlags} --skip-download --print "%(title)s" "${url}"`;
-  const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --ffmpeg-location "${ffmpegPath}" -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const titleCmd = `${YT_DLP} --no-playlist --no-warnings --no-check-certificates --cookies "${COOKIES_FILE}" ${denoFlag} --skip-download --print "%(title)s" "${url}"`;
+  const convertCmd = `${YT_DLP} ${baseFlags} --ffmpeg-location "${ffmpegPath}" -x --audio-format mp3 --audio-quality ${q}k -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
