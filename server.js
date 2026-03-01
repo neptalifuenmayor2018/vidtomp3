@@ -84,7 +84,7 @@ app.post('/convert', async (req, res) => {
   ].join(' ');
 
   const titleCmd = `${YT_DLP} ${baseFlags} --skip-download --print "%(title)s" "${url}"`;
-  const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --ffmpeg-location "${ffmpegPath}" -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
