@@ -18,7 +18,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Guardar yt-dlp en /tmp donde siempre hay permisos de escritura y ejecución
 const YT_DLP = '/tmp/yt-dlp';
 
 function downloadYtDlp() {
@@ -33,7 +32,7 @@ function downloadYtDlp() {
     function get(url, depth = 0) {
       if (depth > 5) return reject(new Error('Demasiados redirects'));
       https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
-        if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+        if ([301,302,307,308].includes(res.statusCode)) {
           return get(res.headers.location, depth + 1);
         }
         res.pipe(file);
@@ -57,7 +56,15 @@ function isValidUrl(url) {
   try { new URL(url); return true; } catch { return false; }
 }
 
-// Iniciar descarga al arrancar
+function cleanTitle(title) {
+  return title
+    .replace(/[\/\\:*?"<>|]/g, '')  // caracteres inválidos en nombres de archivo
+    .replace(/\s+/g, '_')            // espacios por guiones bajos
+    .replace(/_{2,}/g, '_')          // múltiples guiones bajos por uno solo
+    .trim()
+    .substring(0, 100);              // máximo 100 caracteres
+}
+
 downloadYtDlp()
   .then(() => console.log('[init] Servidor listo'))
   .catch(e => console.error('[init] Error descargando yt-dlp:', e.message));
@@ -71,24 +78,20 @@ app.post('/convert', async (req, res) => {
   const outTemplate = `/tmp/${fileId}.%(ext)s`;
   const outPath = `/tmp/${fileId}.mp3`;
 
-  // Si yt-dlp no está listo aún, esperar
   if (!fs.existsSync(YT_DLP)) {
     try { await downloadYtDlp(); }
     catch(e) { return res.status(500).json({ error: 'yt-dlp no disponible, intenta en 30 segundos.' }); }
   }
 
-  // Verificar permisos
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
-  // Obtener título del video primero
-  let videoTitle = fileId;
+  // Obtener título del video
+  let fileName = `audio_${fileId}`;
   try {
-    videoTitle = execSync(`${YT_DLP} --get-title --no-playlist "${url}"`, { timeout: 15000 })
-      .toString().trim()
-      .replace(/[^\w\s\-áéíóúñüÁÉÍÓÚÑÜ]/g, '') // quitar caracteres inválidos
-      .replace(/\s+/g, '_')
-      .substring(0, 100); // máximo 100 caracteres
+    const title = execSync(`${YT_DLP} --print title --no-playlist "${url}"`, { timeout: 15000 }).toString().trim();
+    if (title) fileName = cleanTitle(title);
+    console.log(`[convert] Título: ${fileName}`);
   } catch(e) {
     console.log('[convert] No se pudo obtener título, usando ID');
   }
@@ -127,7 +130,7 @@ app.post('/convert', async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', `attachment; filename="${videoTitle}.mp3"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}.mp3"`);
     const stream = fs.createReadStream(finalPath);
     stream.pipe(res);
     stream.on('end', () => fs.unlink(finalPath, () => {}));
