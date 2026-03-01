@@ -4,6 +4,7 @@ const fs = require('fs');
 const https = require('https');
 const { v4: uuidv4 } = require('uuid');
 const AdmZip = require('adm-zip');
+const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -120,7 +121,7 @@ app.post('/convert', async (req, res, next) => {
     ].join(' ');
 
     const titleCmd = `${YT_DLP} --no-playlist --no-warnings --no-check-certificates --cookies "${COOKIES_FILE}" ${denoFlag} --skip-download --print "%(title)s" "${url}"`;
-    const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --audio-quality ${q}k -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+    const convertCmd = `${YT_DLP} ${baseFlags} --ffmpeg-location "${ffmpegPath}" -x --audio-format mp3 --audio-quality ${q}k -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
     let title = null;
     const titlePromise = new Promise(resolve => {
