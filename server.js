@@ -17,6 +17,14 @@ app.use((req, res, next) => {
 });
 
 const YT_DLP = '/tmp/yt-dlp';
+const COOKIES_FILE = '/tmp/cookies.txt';
+
+// Crear archivo de cookies vacío con formato Netscape válido
+function ensureCookies() {
+  if (!fs.existsSync(COOKIES_FILE)) {
+    fs.writeFileSync(COOKIES_FILE, '# Netscape HTTP Cookie File\n');
+  }
+}
 
 function downloadYtDlp() {
   return new Promise((resolve, reject) => {
@@ -40,8 +48,16 @@ function isValidUrl(url) {
 }
 
 downloadYtDlp()
-  .then(() => console.log('[init] Servidor listo'))
+  .then(() => { ensureCookies(); console.log('[init] Servidor listo'); })
   .catch(e => console.error('[init] Error:', e.message));
+
+// Endpoint para subir cookies
+app.post('/set-cookies', express.text({ type: '*/*', limit: '1mb' }), (req, res) => {
+  if (!req.body) return res.status(400).json({ error: 'No se recibieron cookies' });
+  fs.writeFileSync(COOKIES_FILE, req.body);
+  console.log('[cookies] Cookies actualizadas');
+  res.json({ ok: true });
+});
 
 app.post('/convert', async (req, res) => {
   const { url, quality = '192' } = req.body;
@@ -58,14 +74,27 @@ app.post('/convert', async (req, res) => {
   try { fs.accessSync(YT_DLP, fs.constants.X_OK); }
   catch { fs.chmodSync(YT_DLP, 0o755); }
 
-  const antiBot = [
-    '--extractor-args "youtube:player_client=web,mweb,ios"',
-    '--user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"',
-    '--add-header "Accept-Language:en-US,en;q=0.9"',
+  ensureCookies();
+
+  // Flags profesionales — igual que cobalt.tools y similares
+  const flags = [
+    '--no-playlist',
+    '-x',
+    '--audio-format mp3',
+    `--audio-quality ${q}k`,
+    `--ffmpeg-location "${ffmpegPath}"`,
+    '--no-warnings',
+    '--no-progress',
+    '--force-overwrites',
+    '--format "bestaudio/best"',
+    `--cookies "${COOKIES_FILE}"`,
+    '--extractor-args "youtube:player_client=ios,web"',
+    '--sleep-requests 1',
+    '--no-check-certificates',
   ].join(' ');
 
-  const titleCmd = `${YT_DLP} --no-playlist --skip-download --print "%(title)s" ${antiBot} "${url}"`;
-  const convertCmd = `${YT_DLP} --no-playlist -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" --no-warnings --no-progress --force-overwrites --format "bestaudio/best" ${antiBot} -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const titleCmd = `${YT_DLP} ${flags} --skip-download --print "%(title)s" "${url}"`;
+  const convertCmd = `${YT_DLP} ${flags} -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
@@ -73,7 +102,7 @@ app.post('/convert', async (req, res) => {
   const titlePromise = new Promise(resolve => {
     exec(titleCmd, { timeout: 20000 }, (err, stdout) => {
       if (!err && stdout.trim()) {
-        title = stdout.trim().replace(/[\/\\:*?"<>|]/g,'').trim().substring(0, 120);
+        title = stdout.trim().replace(/[\/\\:*?"<>|]/g, '').trim().substring(0, 120);
       }
       resolve();
     });
@@ -81,6 +110,8 @@ app.post('/convert', async (req, res) => {
 
   const convertPromise = new Promise((resolve, reject) => {
     exec(convertCmd, { timeout: 300000 }, (err, stdout, stderr) => {
+      console.log('[stdout]', stdout);
+      console.log('[stderr]', stderr);
       if (err) reject(stderr || err.message);
       else resolve();
     });
@@ -89,16 +120,24 @@ app.post('/convert', async (req, res) => {
   try {
     await Promise.all([titlePromise, convertPromise]);
 
-    const outPath = `/tmp/${fileId}.mp3`;
-    if (!fs.existsSync(outPath)) {
-      const files = fs.readdirSync('/tmp').filter(f => f.startsWith(fileId));
-      if (!files.length) return res.status(500).json({ error: 'Archivo no generado.' });
-    }
+    const files = fs.readdirSync('/tmp').filter(f => f.startsWith(fileId) && f.endsWith('.mp3'));
+    if (!files.length) return res.status(500).json({ error: 'Archivo no generado.' });
 
     res.json({ fileId, title: title || null });
   } catch(err) {
     console.error('[error]', err);
-    res.status(500).json({ error: 'No se pudo convertir el video.', detail: err });
+
+    // Mensaje de error amigable
+    let msg = 'No se pudo convertir el video.';
+    if (String(err).includes('Sign in') || String(err).includes('bot')) {
+      msg = 'YouTube requiere autenticación. Por favor sube tus cookies de YouTube.';
+    } else if (String(err).includes('DRM')) {
+      msg = 'Este video está protegido con DRM y no puede descargarse.';
+    } else if (String(err).includes('Private')) {
+      msg = 'Este video es privado.';
+    }
+
+    res.status(500).json({ error: msg, detail: String(err).substring(0, 300) });
   }
 });
 
@@ -110,7 +149,7 @@ app.get('/download/:fileId', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).send('Archivo no encontrado o expirado');
 
   const title = req.query.title ? decodeURIComponent(req.query.title) : 'audio';
-  const safeName = title.replace(/[\/\\:*?"<>|]/g,'').trim() || 'audio';
+  const safeName = title.replace(/[\/\\:*?"<>|]/g, '').trim() || 'audio';
 
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${safeName}.mp3"`);
@@ -122,3 +161,4 @@ app.get('/download/:fileId', (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`VidToMP3 corriendo en puerto ${PORT}`));
+ 
