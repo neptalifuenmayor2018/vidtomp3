@@ -87,7 +87,7 @@ app.post('/convert', async (req, res) => {
 
   // Paso 2: descargar el mejor audio disponible SIN especificar formato
   // yt-dlp elige lo mejor disponible, ffmpeg convierte a mp3
-  const convertCmd = `${YT_DLP} ${baseFlags} -f "bestaudio" --ffmpeg-location "${ffmpegPath}" --postprocessor-args "ffmpeg:-vn -ar 44100 -ac 2 -b:a ${q}k" -x --audio-format mp3 -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const convertCmd = `${YT_DLP} ${baseFlags} --ffmpeg-location "${ffmpegPath}" -x --audio-format mp3 --audio-quality ${q}k -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
