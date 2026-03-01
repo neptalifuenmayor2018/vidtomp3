@@ -80,14 +80,11 @@ app.post('/convert', async (req, res) => {
     '--force-overwrites',
     '--no-check-certificates',
     `--cookies "${COOKIES_FILE}"`,
+    '--extractor-args "youtube:player_client=web"',
   ].join(' ');
 
-  // Paso 1: obtener título
   const titleCmd = `${YT_DLP} ${baseFlags} --skip-download --print "%(title)s" "${url}"`;
-
-  // Paso 2: descargar el mejor audio disponible SIN especificar formato
-  // yt-dlp elige lo mejor disponible, ffmpeg convierte a mp3
-  const convertCmd = `${YT_DLP} ${baseFlags} --ffmpeg-location "${ffmpegPath}" -x --audio-format mp3 --audio-quality ${q}k -o "/tmp/${fileId}.%(ext)s" "${url}"`;
+  const convertCmd = `${YT_DLP} ${baseFlags} -x --audio-format mp3 --audio-quality ${q}k --ffmpeg-location "${ffmpegPath}" -o "/tmp/${fileId}.%(ext)s" "${url}"`;
 
   console.log(`[convert] ${url} @ ${q}kbps | fileId: ${fileId}`);
 
